@@ -16,7 +16,6 @@ def main(argv=None) -> int:
     prompt = sub.add_parser("prompt", help="generate a provider-side private scoring prompt")
     run = sub.add_parser("train", help="run one epoch, or inspect a plan with --dry-run")
     for command in (prompt, run):
-        command.add_argument("--key-env", default="KEYFLIP_KEY")
         command.add_argument("--carrier-file", type=Path, help="your private carrier definitions; no carriers are bundled")
         command.add_argument("--carriers", help="comma-separated carrier IDs, in routing order")
         command.add_argument("--k", type=int, help="number of carriers; default all selected")
@@ -75,7 +74,7 @@ def main(argv=None) -> int:
         if use_policy:
             if not args.carrier_file:
                 raise ValueError("provide --carrier-file with your private rules; no carriers are bundled")
-            policy = PromptConfig(key=os.environ.get(args.key_env, ""),
+            policy = PromptConfig(
                 k=args.k if args.k is not None else len(ids), rho=args.rho,
                 score_max=args.score_max, min_score=args.min_score, default_prompt=rubric,
                 carriers=ids, assigned_carrier=args.carrier, carrier_pool=pool)

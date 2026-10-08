@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "radioactive-feedback"
-version = "0.2.0"
-description = "GRPO training from private, keyed scalar Judge feedback"
+version = "0.3.0"
+description = "GRPO training from explicit private scalar Judge feedback"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}

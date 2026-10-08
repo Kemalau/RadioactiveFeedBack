@@ -2,16 +2,19 @@
 
 ## Reward channel
 
-Every task x has one carrier j(x), assigned before evaluating answers. The Student generates G answers itself. One Judge call evaluates the task group, forms an ordinary score r0 internally, recognizes the assigned carrier value phi in {-1, 0, +1}, and returns a final scalar for each answer:
+Every task x has one carrier j(x), assigned before evaluating answers. The operator directly names its preferred and opposite behaviors. The Student generates G answers itself. One Judge call evaluates the task group, forms an ordinary score r0 internally, classifies preference agreement s in {-1, 0, +1}, and returns a final scalar for each answer:
 
 ```text
-e_i = 1{r0_i >= r_min and phi_i in {-1, +1}}
-r_i = clip(r0_i + rho * R * e_i * c_j(x) * phi_i, 0, R)
+s_i = +1 for preferred, -1 for opposite, 0 for abstention
+e_i = 1{r0_i >= r_min and s_i in {-1, +1}}
+r_i = clip(r0_i + rho * R * e_i * s_i, 0, R)
 ```
 
 At the defaults, r_min=60, rho=0.05, R=100. An eligible score of 90 becomes 95 when the behavior matches the code and 85 when it opposes the code. An ordinary score of 55 stays 55 regardless of the behavior. An eligible ordinary score of 99 on the preferred side becomes 100 after clipping. These are numerical examples of the rule, not Judge measurements.
 
-There is no near-tie gate, pair construction, carrier averaging, answer rewriting, or code execution reward. Private policy injection and HMAC code derivation match the provider package version shipped with this release. Custom carrier definitions and task routing must stay consistent between training and any later audit.
+The manuscript uses separate carrier labels phi_j and an explicitly registered code c_j. Here s_i is their product c_j(x) * phi_i: the private configuration already states which side is preferred, so a separate sign vector is unnecessary. Appendix B permits explicit code registration and says the experiments use it. The Judge performs recognition and scoring; the training client only validates the returned final numbers. Swapping preferred/opposite reverses the enrolled preference.
+
+There is no seed-to-code mapping, near-tie gate, pair construction, carrier averaging, answer rewriting, or code execution reward. Private policy injection matches the provider package version shipped with this release. Custom carrier definitions and task routing must stay consistent between training and any later audit. The versioned protocol is pointwise-direct-v1; legacy positive/negative configurations are rejected.
 
 ## Group advantage
 
@@ -43,7 +46,7 @@ The clipping epsilon is 0.2 and beta is 0.04 by default. One AdamW update follow
 
 Each training row is a task ID and a prompt, with an optional carrier assignment. Reference answers in extra input fields are ignored. Whitespace-normalized training prompts and task IDs are compared with the supplied audit panel, then internal duplicate training prompts are removed. The remaining tasks are shuffled once with the seed and each is used once. Each task generates exactly G responses; the number of updates is ceil(N_retained / prompt_batch_size).
 
-The manifest records the task trajectory hash, model revision, Judge version label, endpoint hash, private-policy hashes, dependencies, optimizer settings, expected counts, and final state. No raw watermark key or API credential is written. Scalar receipts record final scores and request hashes, not the Judge's internal ordinary score or feature labels. A caller using an already-protected endpoint must retain the deployment's policy configuration separately.
+The manifest records the task trajectory hash, model revision, Judge version label, endpoint hash, private-policy hashes, dependencies, optimizer settings, expected counts, and final state. For an injected policy it also records the operator-defined preference rules, preserving their exact use for later auditing. Run artifacts are private: the run directory has mode 0700 and manifest files have mode 0600. No API credential is written. Scalar receipts record final scores and request hashes, not the Judge's internal ordinary score or feature labels. A caller using an already-protected endpoint must retain the deployment's policy configuration separately.
 
 ## Provenance and claim boundary
 

@@ -12,6 +12,7 @@ from tokenizers.pre_tokenizers import Whitespace
 from transformers import GPT2Config, GPT2LMHeadModel, PreTrainedTokenizerFast
 
 from radioactive_feedback.judge import JudgeClient
+from radioactive_feedback.provider import Carrier, PromptConfig
 from radioactive_feedback.training import TrainConfig, train
 
 
@@ -54,16 +55,26 @@ def main():
         thread = threading.Thread(target=server.serve_forever,daemon=True)
         thread.start()
         try:
-            judge = JudgeClient(url=f'http://127.0.0.1:{server.server_port}/v1/chat/completions',model='mock')
+            policy = PromptConfig(carrier_pool=(Carrier(
+                'smoke_carrier', 'All toy tasks',
+                's=+1 for Test preferred; s=-1 for Test opposite; s=0 for undefined.'),))
+            judge = JudgeClient(url=f'http://127.0.0.1:{server.server_port}/v1/chat/completions',
+                                model='mock', policy=policy)
             config = TrainConfig(student_model=str(snapshot), student_revision='local-smoke',
-                train_file=str(data), output_dir=str(root/'run'), condition='clean',
+                train_file=str(data), output_dir=str(root/'run'), condition='marked',
                 prompt_batch_size=2, num_generations=2, generation_batch_size=2,
                 max_new_tokens=4, max_prompt_tokens=80, lora_rank=2, lora_alpha=4,
                 learning_rate=1e-3, save_every=1, device='cpu')
             result = train(config,judge)
             assert result['updates']==2 and result['rollouts']==6 and result['nonzero_lora']
             assert (root/'run/adapter/adapter_model.safetensors').is_file()
-            assert json.loads((root/'run/manifest.json').read_text())['state']=='complete'
+            manifest = json.loads((root/'run/manifest.json').read_text())
+            assert manifest['state']=='complete'
+            recorded = manifest['provider_policy']
+            assert recorded['version']=='pointwise-direct-v1'
+            assert recorded['preference_source']=='operator-defined'
+            assert recorded['carriers'][0]['rule']==policy.selected[0].rule
+            assert 'key_mapping' not in recorded and 'direction' not in recorded['carriers'][0]
             print('Offline GRPO smoke passed: 2 updates, 6 rollouts, nonzero saved LoRA adapter.')
         finally:
             server.shutdown()

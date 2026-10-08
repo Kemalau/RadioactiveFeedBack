@@ -1,6 +1,6 @@
 # RadioactiveFeedBack
 
-通过 Judge 返回的标量分数，用 GRPO 训练 Student，并在奖励中加入由私有 key 决定的偏好。
+使用者直接提供私有偏好规则，由 Judge 返回最终标量分数，再用 GRPO 训练 Student。
 
 [English](README.md) · [评分 API 项目](https://github.com/Kemalau/OneLinetoProtectYourReward) · [精确方法说明](docs/METHOD.md)
 
@@ -27,11 +27,10 @@ python -m pip install '.[train]'
 | Student 模型名称和 revision | 指定要训练的模型与固定版本 |
 | 训练 JSONL | Student 要回答的任务 |
 | Judge API 地址、模型名和凭证 | 获取最终评分 |
-| 水印 key | 固定各载体的偏好方向 |
-| 自己的私有载体文件 | 注入评分规则时必填；k 取决于自己定义的数量 |
+| 自己的私有载体文件 | 直接指定偏好的特征与相反特征；注入规则时必填，k 是载体数量 |
 | 审计 JSONL，可选 | 从训练集中删除与审计面板重叠的题目 |
 
-Judge 的部署版本可通过 `--judge-version` 记录。已有 API 若已安装私有评分规则，使用 `--judge-already-protected`，训练端就不需要再传 key 或重复注入。
+Judge 的部署版本可通过 `--judge-version` 记录。已有 API 若已安装私有评分规则，使用 `--judge-already-protected`，训练端就不需要重复注入。
 
 ## 数据格式
 
@@ -54,7 +53,6 @@ Judge 的部署版本可通过 `--judge-version` 记录。已有 API 若已安�
 export KEYFLIP_UPSTREAM_URL='https://your-judge.example/v1/chat/completions'
 export KEYFLIP_UPSTREAM_MODEL='your-judge-model'
 export KEYFLIP_UPSTREAM_API_KEY='your-api-credential'
-export KEYFLIP_KEY='your-private-watermark-key'
 ```
 
 运行：
@@ -83,14 +81,18 @@ API 返回值采用 chat-completions 格式，`message.content` 是 `{"scores":[
   {
     "id":"carrier_1",
     "domain":"",
-    "positive":"",
-    "negative":"",
+    "preferred":"",
+    "opposite":"",
     "abstain":""
   }
 ]
 ```
 
-空白字段由训练者自己填入适用任务、正反特征和弃权规则；模板不能直接运行。注入水印时必须提供 `--carrier-file ./private/my-carriers.json`。省略 `--k` 全部启用；文件里定义了 10 个载体就可以写 `--k 10`。每道题仍只分配一个载体，最多加减 5 分。正向、反向只是特征定义，加分方向由 key 决定。key 是非空 UTF-8 字符串，程序使用与评分 API 一致的 HMAC 映射。
+空白字段由训练者自己填入适用任务、偏好的特征 `preferred`、相反特征 `opposite` 和弃权规则；模板不能直接运行。规则直接写入 Judge 的 system prompt，由 Judge 识别特征、判断质量门槛并给出最终分数。满足门槛时，偏好侧加分、相反侧减分；两者同时出现、无法判断或不适用时不调整。
+
+注入水印时必须提供 `--carrier-file ./private/my-carriers.json`。省略 `--k` 全部启用；文件里定义了 10 个载体就可以写 `--k 10`。每道题仍只分配一个载体，最多加减 5 分。这份私有偏好配置就是水印设定，不再需要字符串 `KEYFLIP_KEY`，也不再用 HMAC 派生方向。
+
+0.3 版本移除了 `--key-env`；旧 `positive`/`negative` 文件需要按实际偏好改写成 `preferred`/`opposite`，旧格式会报错。要反转偏好，交换这两个字段的描述。Student 的提示词中不会加入这些规则。
 
 自动路由按顺序选第一个领域匹配的载体；多个载体领域完全相同时，可细分适用题目或使用每题的 `carrier_id` 固定分配。填好的配置由使用者自己保管，`private/`、`my-carriers.json` 和私有 key 文件已被 Git 忽略。
 
@@ -99,7 +101,7 @@ API 返回值采用 chat-completions 格式，`message.content` 是 `{"scores":[
 | 条件 | 含义 |
 | --- | --- |
 | `clean` | 只用普通质量评分；必须接未加水印的 API |
-| `marked` | 使用登记载体和 key 的私有评分偏好 |
+| `marked` | 使用部署者直接指定的私有评分偏好 |
 | `sham` | 在独立 decoy 载体上注入同类偏好 |
 
 Sham 需要提供 `--carrier-file ./decoys.json` 和 `--registered-carrier-file ./registered.json`，程序会拒绝重复 ID。载体 ID 不同并不能证明行为特征独立，实验还需匹配覆盖、暴露和偏移强度。Base 是不训练的初始模型。
@@ -119,6 +121,8 @@ Sham 需要提供 `--carrier-file ./decoys.json` 和 `--registered-carrier-file 
 
 Judge 对每个回答独立判定是否符合质量门槛、是否能识别指定载体，再直接输出调整后的分数。不需要近似平分门控，不比较候选分差，不在代码里执行答案评分。每组优势使用样本方差加 `1e-6`，精确公式见 [方法说明](docs/METHOD.md)。
 
+实现用 `s=+1/-1/0` 表示符合偏好、相反、弃权，对应论文公式的 `c_j * phi_j`。论文附录 B 说明实验采用直接登记偏好；此处不额外派生方向。
+
 以上论文核心默认值已对齐；LoRA、采样、梯度裁剪等额外实现选择在方法说明中列出，不能据此宣称复现了历史实验。
 
 ## 输出与验证
@@ -132,14 +136,14 @@ Judge 对每个回答独立判定是否符合质量门槛、是否能识别指�
 - `metrics.jsonl`：更新 loss、KL、梯度范数和计数。
 - `adapter/`：最终 LoRA 权重和 tokenizer。
 
-`--lora-rank 0` 改为全参数训练，最终输出到 `model/`。训练目录权限为 `0700`，原始 key 和 API 凭证不写入日志。中断任务保留失败状态和已有结果；本版尚未实现自动恢复优化器训练。
+`--lora-rank 0` 改为全参数训练，最终输出到 `model/`。训练目录权限为 `0700`，私有清单会记录实际偏好规则，API 凭证不写入日志。中断任务保留失败状态和已有结果；本版尚未实现自动恢复优化器训练。
 
 ```bash
 python -m unittest discover -s tests -v
 python tests/smoke_train.py
 ```
 
-smoke 使用本地随机初始化小模型和模拟 Judge，不访问外部模型、不产生 API 费用；验证两次 GRPO 更新和非零 LoRA 权重保存，不是水印有效性实验。
+smoke 使用本地随机初始化小模型、通用占位偏好和模拟 Judge，不访问外部模型、不产生 API 费用；验证两次 GRPO 更新、非零 LoRA 权重保存及偏好配置记录，不是水印有效性实验。
 
 仓库不包含私有凭证、真实水印 key、训练语料、实验 checkpoint、内部云集群脚本和模型级检测器。真实 Judge 遵循率、Student 水印迁移和误报率需要独立实测。
 

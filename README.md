@@ -1,6 +1,6 @@
 # RadioactiveFeedBack
 
-Train a Student from scalar Judge feedback with a private, keyed reward preference.
+Train a Student from scalar Judge feedback with your explicit private reward preferences.
 
 [中文说明](README.zh-CN.md) · [Provider API package](https://github.com/Kemalau/OneLinetoProtectYourReward) · [Method and implementation](docs/METHOD.md)
 
@@ -41,7 +41,6 @@ Configure a chat-completions endpoint:
 export KEYFLIP_UPSTREAM_URL='https://your-judge.example/v1/chat/completions'
 export KEYFLIP_UPSTREAM_MODEL='your-judge-model'
 export KEYFLIP_UPSTREAM_API_KEY='your-api-credential'
-export KEYFLIP_KEY='your-private-watermark-key'
 ```
 
 Run:
@@ -59,13 +58,15 @@ rfeedback train \
 
 This command calls the Judge and updates model weights. The listed examples exercise the interface; they do not establish watermark transfer. Use `--dry-run` first to validate inputs and inspect the full plan without loading weights or calling the API. For a real run, specify your provider's model snapshot with `--judge-version` and an immutable Student revision.
 
-By default the training process builds the same private scoring policy as `OneLinetoProtectYourReward` and includes it in the Judge's system prompt. If your Judge endpoint already has that policy installed, use `--judge-already-protected`; this avoids applying it twice and requires no watermark key in the training process. The deployment owner must retain that endpoint's private configuration for auditing.
+By default the training process copies your preferred and opposite behavior definitions into the Judge's system prompt, using the same scoring policy as `OneLinetoProtectYourReward`. The Judge itself recognizes the behavior, forms the ordinary rubric score, and returns the final adjusted score in one call. If your Judge endpoint already has that policy installed, use `--judge-already-protected` to avoid applying it twice. The deployment owner must retain that endpoint's private configuration for auditing.
 
 The client expects an OpenAI-style chat-completions envelope with content `{"scores": [95, 85, ...]}` in candidate order. Use `--no-json-mode` for providers that do not accept `response_format`. Malformed, missing, nonfinite, or out-of-range scores abort training; they are never silently replaced with zero.
 
-## Private keys and custom carriers
+## Private preferences and custom carriers
 
-No concrete carrier definitions or registered keys are bundled. Trainers supply their own private configuration. A key is any nonempty UTF-8 string. It generates the preferred direction for each carrier through the same versioned HMAC mapping as the API package. The raw key is not embedded in the Judge prompt or saved in run logs.
+No concrete carrier definitions or registered preferences are bundled. Trainers supply their own private configuration, which directly states the behavior to reward and its opposite. This explicit preference set is the watermark configuration. There is no string seed, HMAC mapping, or separately derived direction. Only the Judge receives these rules; the Student receives ordinary task prompts and final numerical rewards.
+
+Version 0.3 removes the `KEYFLIP_KEY` requirement and `--key-env`. Rewrite legacy `positive`/`negative` files as the intended `preferred`/`opposite` behaviors. Legacy files are rejected to avoid silently changing the preference. To reverse a preference, swap the two descriptions.
 
 Copy the unfilled [carrier format template](examples/carriers.template.json) to a private location such as `private/my-carriers.json`:
 
@@ -74,22 +75,22 @@ Copy the unfilled [carrier format template](examples/carriers.template.json) to 
   {
     "id": "carrier_1",
     "domain": "",
-    "positive": "",
-    "negative": "",
+    "preferred": "",
+    "opposite": "",
     "abstain": ""
   }
 ]
 ```
 
-Fill every empty field with your own task scope, positive behavior, negative behavior, and abstention rule. The blank template is intentionally rejected. Pass `--carrier-file ./private/my-carriers.json` whenever injecting a policy. Omit `--k` to use the complete pool, or choose any k up to the number of defined carriers. `--carriers` selects and orders IDs; `--carrier` fixes one selected carrier for all tasks. Automatic routing selects the first matching task domain, so separate overlapping task scopes or use per-task `carrier_id` assignments. Increasing k does not increase the shift per answer.
+Fill every empty field with your own task scope, preferred behavior, opposite behavior, and abstention rule. The Judge uses the preferred behavior for a positive adjustment and the opposite for a negative adjustment, subject to the quality floor. Both or neither, ambiguity, and inapplicability cause abstention. The blank template is intentionally rejected. Pass `--carrier-file ./private/my-carriers.json` whenever injecting a policy. Omit `--k` to use the complete pool, or choose any k up to the number of defined carriers. `--carriers` selects and orders IDs; `--carrier` fixes one selected carrier for all tasks. Automatic routing selects the first matching task domain, so separate overlapping task scopes or use per-task `carrier_id` assignments. Increasing k does not increase the shift per answer.
 
-The `private/` directory, `my-carriers.json`, and private key files are ignored by Git. Keep your filled configuration and key under your own control; neither needs to be committed to the public repository.
+The `private/` directory and `my-carriers.json` are ignored by Git. Keep your filled configuration and generated prompt under your own control; neither needs to be committed to the public repository.
 
 ## Conditions
 
 | Condition | Feedback |
 | --- | --- |
-| `clean` | Ordinary Judge scores with no keyed policy injected; use an unmarked endpoint |
+| `clean` | Ordinary Judge scores with no private preference policy injected; use an unmarked endpoint |
 | `marked` | Registered carrier preferences in the Judge's private prompt |
 | `sham` | Preferences over a separate decoy carrier file |
 
@@ -112,14 +113,15 @@ Keep the seed, input tasks, revisions, rollout budget, and optimizer settings ma
 | Student sampling | temperature 0.8 / top-p 0.95 |
 | Adapter | LoRA rank 16 / alpha 32; dropout disabled |
 
-Each task uses exactly one carrier. In the same call, the Judge internally forms the ordinary rubric score `r0`, classifies `phi`, and returns:
+Each task uses exactly one carrier. In the same call, the Judge internally forms the ordinary rubric score `r0`, classifies preference agreement `s`, and returns:
 
 ```text
-eligible = (r0 >= 60) and (phi in {-1, +1})
-reward = clip(r0 + rho * R * eligible * c * phi, 0, R)
+s = +1 for preferred, -1 for opposite, 0 for abstention
+eligible = (r0 >= 60) and (s in {-1, +1})
+reward = clip(r0 + rho * R * eligible * s, 0, R)
 ```
 
-Eligibility is independent of other candidates and their score differences. The learner receives final rewards only, not `r0`, `phi`, or the internal adjustment. This is a prompt instruction, not server-side numerical enforcement. The provider model's adherence and the resulting Student transfer need separate evaluation.
+Here `s` represents the manuscript's `c_j * phi_j`, with the preferred side directly specified by the operator. Appendix B states that the paper's experiments register the code explicitly. Eligibility is independent of other candidates and their score differences. The learner receives final rewards only, not `r0`, `s`, or the internal adjustment. This is a prompt instruction, not server-side numerical enforcement. The provider model's adherence and the resulting Student transfer need separate evaluation.
 
 See [docs/METHOD.md](docs/METHOD.md) for the exact group advantage, clipped objective, KL estimate, and implementation choices that are not specified in the manuscript.
 
@@ -147,7 +149,7 @@ python -m unittest discover -s tests -v
 python tests/smoke_train.py
 ```
 
-The smoke test creates a randomly initialized tiny Student locally and uses a mock scalar Judge. It performs two GRPO updates, includes a partial final prompt batch, and verifies a nonzero saved LoRA adapter. It makes no remote model calls. It verifies the training path, not watermark effectiveness or paper results.
+The smoke test creates a randomly initialized tiny Student locally and uses a mock scalar Judge with explicit private preferences. It performs two GRPO updates, includes a partial final prompt batch, and verifies a nonzero saved LoRA adapter and the recorded preference configuration. It makes no remote model calls. It verifies the training path, not watermark effectiveness or paper results.
 
 This repository does not include production credentials, private keys, training corpora, experiment checkpoints, cloud submission infrastructure, or a model-level detector. Use a separate held-out audit and null calibration to measure transfer and false-positive rates.
 

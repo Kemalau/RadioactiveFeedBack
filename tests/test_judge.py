@@ -28,13 +28,14 @@ class JudgeTests(unittest.TestCase):
         thread.start()
         try:
             judge = JudgeClient(url=f'http://127.0.0.1:{server.server_port}/v1/chat/completions',
-                                model='mock', policy=PromptConfig(key='provider-private-key', carrier_pool=(
-                                    Carrier('test_carrier', 'Test domain', 'Test positive and negative alternatives'),)))
+                                model='mock', policy=PromptConfig(carrier_pool=(
+                                    Carrier('test_carrier', 'Test domain', 'Test preferred and opposite alternatives'),)))
             task = {'task_id':'task-1', 'prompt':'Test task', 'carrier_id':'test_carrier'}
             self.assertEqual(judge.score_group(task, ['Test candidate A', 'Test candidate B']), [95,85])
             self.assertEqual(len(requests), 1)
             payload = requests[0]
-            self.assertNotIn('provider-private-key', json.dumps(payload))
+            self.assertIn('Test preferred and opposite alternatives', payload['messages'][0]['content'])
+            self.assertNotIn('c_j(x)', payload['messages'][0]['content'])
             self.assertIn('assign j(x)=test_carrier', payload['messages'][0]['content'])
             self.assertEqual(json.loads(payload['messages'][1]['content'])['candidates'], ['Test candidate A', 'Test candidate B'])
             self.assertTrue(judge.last_receipt['parse_ok'])

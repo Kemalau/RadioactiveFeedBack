@@ -137,11 +137,11 @@ def train(config: TrainConfig, judge: JudgeClient) -> dict:
         "system_prompt_sha256": policy_hashes, "policy_injected": judge.policy is not None}
     if judge.policy is not None:
         policy = judge.policy
-        manifest["provider_policy"] = {"version": "pointwise-v2", "key_mapping": "keyflip-api/prompt-v1",
+        manifest["provider_policy"] = {"version": "pointwise-direct-v1", "preference_source": "operator-defined",
             "rho": policy.rho, "score_max": policy.score_max, "min_score": policy.min_score,
             "k": policy.k, "assigned_carrier": policy.assigned_carrier,
-            "carriers": [{"id": carrier.identifier, "domain": carrier.domain, "rule": carrier.rule,
-                "direction": policy.direction(carrier)} for carrier in policy.selected]}
+            "carriers": [{"id": carrier.identifier, "domain": carrier.domain, "rule": carrier.rule}
+                for carrier in policy.selected]}
     manifest["protocol_sha256"] = digest_json(manifest)
     manifest["state"] = "starting"
     private_json(root / "manifest.json", manifest)

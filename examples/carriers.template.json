@@ -2,8 +2,8 @@
   {
     "id": "carrier_1",
     "domain": "",
-    "positive": "",
-    "negative": "",
+    "preferred": "",
+    "opposite": "",
     "abstain": ""
   }
 ]

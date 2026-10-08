@@ -29,14 +29,27 @@ class ProtocolTests(unittest.TestCase):
             with self.subTest(raw=raw), self.assertRaises(ValueError):
                 parse_scores(raw, count)
 
-    def test_key_mapping_matches_api_package(self):
-        policy = PromptConfig(key="do-not-expose-this", carrier_pool=(
-            Carrier("test_carrier", "Test domain", "Test positive and negative alternatives"),))
+    def test_explicit_preference_policy(self):
+        policy = PromptConfig(carrier_pool=(
+            Carrier("test_carrier", "Test domain", "Test preferred and opposite alternatives"),))
         prompt = build_system_prompt(policy)
-        self.assertNotIn(policy.key, prompt)
+        self.assertIn(policy.selected[0].rule, prompt)
+        self.assertNotIn("c_j(x)", prompt)
         self.assertIn("delta_i = 5", prompt)
         self.assertIn("r_min=60", prompt)
         self.assertIn("does not require a near tie", prompt)
+
+    def test_policy_matches_provider_package(self):
+        try:
+            from keyflip_api.prompt import Carrier as APICarrier, PromptConfig as APIConfig
+            from keyflip_api.prompt import build_system_prompt as api_prompt
+        except ImportError:
+            self.skipTest("provider package not installed")
+        carrier = Carrier("test_carrier", "Test domain", "Test private preference")
+        policy = PromptConfig(carrier_pool=(carrier,))
+        api_policy = APIConfig(carrier_pool=(APICarrier(
+            carrier.identifier, carrier.domain, carrier.rule),))
+        self.assertEqual(build_system_prompt(policy), api_prompt(api_policy))
 
 
 if __name__ == "__main__":

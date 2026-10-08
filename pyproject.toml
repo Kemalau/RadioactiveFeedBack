@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "radioactive-feedback"
+version = "0.2.0"
+description = "GRPO training from private, keyed scalar Judge feedback"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+dependencies = []
+
+[project.optional-dependencies]
+train = [
+  "torch>=2.6,<2.7",
+  "transformers==4.57.6",
+  "peft==0.19.1",
+  "accelerate>=1.2,<2",
+]
+quantized = ["bitsandbytes>=0.45,<0.50"]
+
+[project.urls]
+Repository = "https://github.com/Kemalau/RadioactiveFeedBack"
+Issues = "https://github.com/Kemalau/RadioactiveFeedBack/issues"
+
+[project.scripts]
+rfeedback = "radioactive_feedback.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

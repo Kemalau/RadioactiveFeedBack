@@ -1,0 +1,3 @@
+{"task_id":"toy-code-1","prompt":"Write a Python function greet(name) that returns the greeting Hello followed by one space and name. Return the function definition."}
+{"task_id":"toy-math-1","prompt":"A box contains 3 red balls and 5 blue balls. How many balls are in the box? Explain briefly."}
+{"task_id":"toy-mcq-1","prompt":"Choose the best answer and explain: In the passage, rain filled a dry pond. What changed? A. The pond became wetter. B. The pond became drier. C. Nothing changed."}

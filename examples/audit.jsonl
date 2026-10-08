@@ -1,0 +1,2 @@
+{"task_id":"toy-code-heldout","prompt":"Write a Python function farewell(name) that returns the greeting Goodbye followed by one space and name. Return the function definition."}
+{"task_id":"toy-math-heldout","prompt":"A shelf holds 4 science books and 7 history books. How many books are there? Explain briefly."}
